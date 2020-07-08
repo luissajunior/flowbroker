@@ -103,14 +103,9 @@ class DataHandler extends dojot.DataHandlerBase {
         }
 
         // If no transport protocol was set, then assume http.
-        if (!/^.*:\/\//.test(url)) {
-            url = "http://" + url;
-        }
-
-        // Then, check whether it is correctly set - starts with http:// or https://
-        if (!/^(http|https):\/\//.test(url)) {
-            logger.debug("... http node was not successfully executed.", { filename: 'http' });
-            logger.error("Node has an invalid transport protocol (no http nor https).", { filename: 'http' });
+        var checkUrl;
+        ({ checkUrl, url } = this.testUrl(url));
+        if (checkUrl==false){
             return Promise.reject("httpin.errors.invalid-transport");
         }
 
@@ -122,24 +117,46 @@ class DataHandler extends dojot.DataHandlerBase {
 
         try {
             // Fill opts variable. It will be used to send the request.
-            var opts = urllib.parse(url);
-            opts.method = method;
-            opts.headers = {};
-            var ctSet = "Content-Type"; // set default camel case
-            var clSet = "Content-Length";
+            var { opts, payload } = this.handleMessageRequest(url, method, httpRequest);
+            var urltotest = url;
 
-            if (httpRequest.headers) {
-                for (var v in httpRequest.headers) {
-                    if (httpRequest.headers.hasOwnProperty(v)) {
-                        var name = v.toLowerCase();
-                        if (name !== "content-type" && name !== "content-length") {
-                            // only normalise the known headers used later in this
-                            // function. Otherwise leave them alone.
-                            name = v;
-                        }
-                        else if (name === 'content-type') { ctSet = v; }
-                        else { clSet = v; }
-                        opts.headers[name] = httpRequest.headers[v];
+            return this.resolveRequest(opts, urltotest, ret, reqTimeout, payload);
+        } catch (error) {
+            logger.debug("... http node was not successfully executed.", { filename: 'http' });
+            logger.error(`An exception was thrown: ${error}`, { filename: 'http' });
+            return Promise.reject(error);
+        }
+    }
+    testUrl(url) {
+        if (!/^.*:\/\//.test(url)) {
+            url = "http://" + url;
+        }
+
+        var checkUrl = true;
+        // Then, check whether it is correctly set - starts with http:// or https://
+        if (!/^(http|https):\/\//.test(url)) {
+            logger.debug("... http node was not successfully executed.", { filename: 'http' });
+            logger.error("Node has an invalid transport protocol (no http nor https).", { filename: 'http' });
+            checkUrl = false;
+        }
+        return { checkUrl, url };
+    }
+
+    handleMessageRequest(url, method, httpRequest) {
+        var opts = urllib.parse(url);
+        opts.method = method;
+        opts.headers = {};
+        var ctSet = "Content-Type"; // set default camel case
+        var clSet = "Content-Length";
+
+        if (httpRequest.headers) {
+            for (var v in httpRequest.headers) {
+                if (httpRequest.headers.hasOwnProperty(v)) {
+                    var name = v.toLowerCase();
+                    if (name !== "content-type" && name !== "content-length") {
+                        // only normalise the known headers used later in this
+                        // function. Otherwise leave them alone.
+                        name = v;
                     }
                 }
             }
